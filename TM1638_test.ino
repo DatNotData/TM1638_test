@@ -13,8 +13,6 @@ const int DIO = 8;
       +-3-+  7
 */
 
-const byte dp = 0b10000000;
-
 const byte numbers[10] = {
   0b00111111,
   0b00000110,
@@ -28,46 +26,39 @@ const byte numbers[10] = {
   0b01101111,
 };
 
-const byte sevenSegmentsId[8] = {
-  0xCE, // right
-  0xCC,
-  0xCA,
-  0xC8,
+byte readButtons() {
+  byte raw = 0;
 
-  0xC6,
-  0xC4,
-  0xC2,
-  0xC0  // left
-};
+  digitalWrite(STB, LOW);
+  shiftOut(DIO, CLK, LSBFIRST, 0x42);
 
-const byte ledId[8] = {
-  0xC1, // left
-  0xC3,
-  0xC5,
-  0xC7,
+  pinMode(DIO, INPUT);
+  for (int i = 0; i < 4; i++)
+    raw |= shiftIn(DIO, CLK, LSBFIRST) << i;
+  pinMode(DIO, OUTPUT);
+  digitalWrite(STB, HIGH);
 
-  0xC9,
-  0xCB,
-  0xCD,
-  0xCF  // right
-};
+  byte values;
+
+  for (int i = 0; i < 8; i++) {
+    values |= (raw & (0x1 << i) ? 1 : 0) << i;
+  }
+
+  return values;
+}
 
 void writeLed(byte pos, bool val) {
   digitalWrite(STB, LOW);
-  shiftOut(DIO, CLK, LSBFIRST, ledId[pos]); // 1st digit
+  shiftOut(DIO, CLK, LSBFIRST, 0xC1 + (pos << 1)); // 1st digit
   shiftOut(DIO, CLK, LSBFIRST, val);
   digitalWrite(STB, HIGH);
 }
 
-void displayChar(byte pos, byte character) {
+void writeDisplay(byte pos, byte character, bool dp = false) {
   digitalWrite(STB, LOW);
-  shiftOut(DIO, CLK, LSBFIRST, sevenSegmentsId[pos]); // 1st digit
-  shiftOut(DIO, CLK, LSBFIRST, character);
+  shiftOut(DIO, CLK, LSBFIRST, 0xC0 + (pos << 1)); // 1st digit
+  shiftOut(DIO, CLK, LSBFIRST, character + (0b10000000 * dp));
   digitalWrite(STB, HIGH);
-}
-
-void displayDigit(byte pos, int digit){
-  displayChar(pos, numbers[digit]);
 }
 
 void sendCommand(uint8_t value)
@@ -98,28 +89,31 @@ void setup()
   sendCommand(0b10001001); // 1000ABBB where A is activate and B is brightness
 
   reset();
+
+  Serial.begin(9600);
 }
 
 void loop()
 {
   sendCommand(0x44);  // set single address
 
+  writeDisplay(0, numbers[3]);
+  writeDisplay(1, numbers[9]);
+  writeDisplay(2, numbers[9]);
+  writeDisplay(3, numbers[0]);
 
-  displayDigit(7, 3);
-  displayDigit(6, 9);
-  displayDigit(5, 9);
-  displayDigit(4, 0);
+  writeDisplay(4, numbers[2]);
+  writeDisplay(5, numbers[0]);
+  writeDisplay(6, numbers[1]);
+  writeDisplay(7, numbers[8]);
 
-
-  displayDigit(3, 3);
-  displayDigit(2, 9);
-  displayDigit(1, 9);
-  displayDigit(0, 0);
-
-
-  delay(1000);
-
-  reset();
-
-  delay(1000);
+  byte buttonValues = readButtons();
+  for (int i = 0; i < 8; i++) {
+    bool bit = bitRead(buttonValues, i);
+    Serial.print(bit);
+    writeLed(i, bit);
+  }
+  Serial.println();
 }
+
+
